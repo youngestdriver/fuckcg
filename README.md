@@ -16,6 +16,7 @@
 4. Gemini. 用于分析反编译后的混淆代码
 5. Copilot. 伟大无须多言
 6. 感谢 JokerCG 项目，虽然这个项目也是我写的
+7. [artiga033](https://github.com/artiga033). 提供了生成运动数据的算法思路和样本
 
 ## 使用工具
 
@@ -26,9 +27,9 @@
 
 ## 关于作者
 
-哔哩哔哩：(谁家的小鉴)[https://space.bilibili.com/356620493]
+哔哩哔哩：[谁家的小鉴](https://space.bilibili.com/356620493)
 
-投喂一下：(爱发电)[https://afdian.com/a/wzjer]
+投喂一下：[爱发电](https://afdian.com/a/wzjer)
 
 ## 源码说明：
 
