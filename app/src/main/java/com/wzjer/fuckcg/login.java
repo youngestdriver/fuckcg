@@ -119,7 +119,7 @@ public class login {
         }
 
         Log.d(TAG, "Starting OAuth page...");
-        webView.loadUrl(LOGIN_URL);
+        webView.post(() -> webView.loadUrl(LOGIN_URL));
         return getSavedJSessionId();
     }
 
