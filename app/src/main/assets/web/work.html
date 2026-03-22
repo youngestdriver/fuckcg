@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>刷跑步 - 工作台</title>
+    <link rel="stylesheet" href="style.css" />
+</head>
+<body data-page="work">
+<div class="page page-work">
+    <div class="page-work-container">
+        <section id="workPanel" class="tab-panel is-active" aria-labelledby="tabWork">
+            <div class="card hero compact">
+                <div class="header-row">
+                    <div>
+                        <div class="eyebrow">Workstation</div>
+                        <h1>运动数据生成工作台</h1>
+                    </div>
+                    <button id="logoutButton" class="secondary" type="button">退出登录</button>
+                </div>
+                <p class="muted">请填写学号与姓名，系统将通过原生桥接生成标准 `UploadJsonSports` 数据，并在下方提供结构化 JSON 预览。</p>
+                <div id="workStatus" class="status info">准备就绪，请填写信息后开始操作。</div>
+            </div>
+
+            <div class="card form-card">
+                <label class="field">
+                    <span>学号</span>
+                    <input id="studentId" type="text" inputmode="numeric" autocomplete="off" placeholder="例如：202321054021" />
+                </label>
+                <label class="field">
+                    <span>姓名</span>
+                    <input id="studentName" type="text" autocomplete="off" placeholder="例如：张三" />
+                </label>
+                <div class="actions">
+                    <button id="generateButton" class="primary" type="button">生成 UploadJsonSports</button>
+                    <button id="submitButton" class="primary" type="button">发起 HTTP 请求</button>
+                    <button id="clearOutputButton" class="secondary" type="button">清空结果</button>
+                </div>
+            </div>
+
+            <div class="card output-card">
+                <div class="output-header">
+                    <h2>生成结果</h2>
+                    <span class="muted">可编辑 JSON，如果你不了解相关字段的能力，请不要胡乱修改以防被标记为异常</span>
+                </div>
+                <textarea id="output" class="output-textarea" placeholder="{}">{}</textarea>
+                <div class="output-actions">
+                    <button id="formatButton" class="secondary" type="button">格式化 JSON</button>
+                    <button id="copyButton" class="secondary" type="button">复制</button>
+                </div>
+                <br><br><br><br><br>
+            </div>
+        </section>
+
+        <section id="aboutPanel" class="tab-panel" aria-labelledby="tabAbout" hidden>
+            <div class="card about-card">
+                <div class="eyebrow">About</div>
+                <h2>关于本工具</h2>
+                <p class="muted">本工具用于自主生成 json 数据，并使用官方加密算法签名后提交，以达到假装跑步的目的</p>
+                <div class="about-grid">
+                    <div class="about-item">
+                        <h3>实现介绍</h3>
+                        <p>1. 将创高体育2.9.6脱壳后逆向，找到生成签名的算法，发现核心签名算法在 so 库中；</p>
+                        <p>2. 使用 ida pro 逆向并修改 so 库中的签名验证逻辑，使得在我们自行开发的应用中也能生成签名；</p>
+                        <p>3. 另外，使用抓包软件发现接口并伪造 http 请求提交。</p>
+                    </div>
+                    <div class="about-item">
+                        <h3>关于作者</h3>
+                        <p>谁家的小鉴，QQ：1515523532</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="advancedPanel" class="tab-panel" aria-labelledby="tabAdvanced" hidden>
+            <div class="card advanced-card">
+                <div class="eyebrow">Advanced</div>
+                <h2>高级设置</h2>
+                <p class="muted">查看和管理当前登录凭据，支持复制或粘贴自定义凭据以切换用户。</p>
+
+                <div class="credentials-container">
+                    <div class="credentials-field">
+                        <label>当前凭据 (JSON)</label>
+                        <textarea id="credentialsOutput" class="credentials-textarea" placeholder="点击下方「刷新凭据」按钮加载凭据"></textarea>
+                        <div class="credentials-actions">
+                            <button id="refreshCredsButton" class="secondary" type="button">刷新凭据</button>
+                            <button id="copyCresButton" class="secondary" type="button">复制</button>
+                            <button id="pasteCredsButton" class="secondary" type="button">粘贴并应用</button>
+                            <button id="clearCredsButton" class="secondary" type="button">清除</button>
+                        </div>
+                    </div>
+                    <div id="advancedStatus" class="status info" style="margin-top: 16px;">等待操作。</div>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <nav class="tab-bar" aria-label="底部导航">
+        <button id="tabWork" class="tab-button is-active" type="button" data-tab-target="workPanel" aria-selected="true">工作台</button>
+        <button id="tabAbout" class="tab-button" type="button" data-tab-target="aboutPanel" aria-selected="false">关于</button>
+        <button id="tabAdvanced" class="tab-button" type="button" data-tab-target="advancedPanel" aria-selected="false">高级设置</button>
+    </nav>
+</div>
+<script src="app.js"></script>
+</body>
+</html>
