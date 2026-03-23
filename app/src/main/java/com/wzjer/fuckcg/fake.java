@@ -38,85 +38,69 @@ public class fake {
             double TARGET_KM = 2;
             String sportId = UUID.randomUUID().toString();
 
-            double odometer = (TARGET_KM + Math.random() / 3);
-            double minutes = 5 * TARGET_KM + Math.random() * TARGET_KM * 3;
-            String activeTime = "00:" + padZero(minutes) + ":" + padZero((minutes % 1) * 60);
-            double calorie = Math.round((320.0 / 30.0) * minutes * 10.0) / 10.0;
+            double plannedOdometerKm = TARGET_KM + Math.random() / 3.0;
+            double plannedMinutes = 5.0 * TARGET_KM + Math.random() * TARGET_KM * 3.0;
+            long durationMillis = Math.max(60_000L, (long) (plannedMinutes * 60_000));
+            double durationMinutes = durationMillis / 60_000.0;
+
             long now = System.currentTimeMillis();
             SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US);
-
-            // 计算 beginTime
             Calendar calBegin = Calendar.getInstance();
-            calBegin.setTimeInMillis((long) (now - minutes * 60000));
+            calBegin.setTimeInMillis(now - durationMillis);
             String beginTime = dateFormat.format(calBegin.getTime());
             long beginTimestamp = calBegin.getTimeInMillis();
 
-            // 计算 endTime
             Calendar calEnd = Calendar.getInstance();
             calEnd.setTimeInMillis(now);
             String endTime = dateFormat.format(calEnd.getTime());
 
             int isValid = 1;
             String isValidReason = "";
-            int randomStepCount = (int) Math.round(3000 + Math.random() * 1000);
 
-            // 读取 assets/example.json 运动轨迹，并作为核心数据来源。
-            List<SportLatLngBean> routeData = generateFakeRouteData(appContext, beginTimestamp, minutes);
+            double targetMeters = plannedOdometerKm * 1000.0;
+            int stepCount = estimateStepCount(targetMeters);
+
+            List<SportLatLngBean> routeData = generateFakeRouteData(appContext, beginTimestamp, durationMinutes);
             if (routeData.isEmpty()) {
-                routeData = createFallbackRouteData(beginTimestamp, minutes, TARGET_KM);
+                routeData = createFallbackRouteData(beginTimestamp, durationMinutes, plannedOdometerKm);
             }
-            RouteSummary summary = summarizeRoute(routeData);
+            routeData = normalizeRouteData(routeData, beginTimestamp, durationMillis, targetMeters, stepCount);
 
-            double routeKm = summary.distanceMeters > 1.0 ? (summary.distanceMeters / 1000.0) : odometer;
-            // Keep generated distance aligned with target requirement.
-            odometer = Math.max(TARGET_KM, routeKm);
+            double odometer = targetMeters / 1000.0;
+            double speed = odometer / durationMinutes * 60.0;
+            String avgSpeed = format2(speed);
+            String avgPace = formatPaceFromSpeed(speed);
+            int paceKmCount = Math.max(0, (int) Math.floor(odometer));
+            double remainKm = Math.max(0.0, odometer - paceKmCount);
+            long lastOdometerMillis = Math.round((remainKm / Math.max(speed, 0.0001)) * 3_600_000.0);
+            String lastOdometerTime = formatDurationHms(lastOdometerMillis);
+            String activeTime = formatDurationHms(durationMillis);
+            double calorie = Math.round((320.0 / 30.0) * durationMinutes * 10.0) / 10.0;
+            double stepMinute = stepCount / durationMinutes;
 
-            double routeMinutes = summary.durationMillis > 0 ? (summary.durationMillis / 60000.0) : minutes;
-            minutes = summary.durationMillis > 0 ? (minutes * 0.35 + routeMinutes * 0.65) : minutes;
-            minutes = Math.max(1.0, minutes);
+            int minuteCount = Math.max(1, (int) Math.round(durationMinutes));
+            List<Double> minuteSpeedValues = buildMinuteSpeedSeries(speed, minuteCount);
+            double maxSpeedVal = speed;
+            double minSpeedVal = speed;
+            for (int i = 0; i < minuteSpeedValues.size(); i++) {
+                double v = minuteSpeedValues.get(i);
+                maxSpeedVal = Math.max(maxSpeedVal, v);
+                minSpeedVal = Math.min(minSpeedVal, v);
 
-            double speed = odometer / minutes * 60;
-            double routeAvgSpeed = summary.movingSpeedCount > 0 ? (summary.speedSum / summary.movingSpeedCount) : speed;
-            double avgSpeedValue = summary.movingSpeedCount > 0 ? (speed * 0.35 + routeAvgSpeed * 0.65) : speed;
-            String avgSpeed = format2(avgSpeedValue);
-
-            double maxSpeedValue = summary.maxSpeed > 0 ? Math.max(summary.maxSpeed, avgSpeedValue + 0.2) : (avgSpeedValue + 0.5 + Math.random() * 0.7);
-            double minSpeedValue = summary.minSpeed > 0 ? Math.min(summary.minSpeed, Math.max(0.1, avgSpeedValue - 0.2)) : Math.max(0.1, avgSpeedValue - 0.5 - Math.random() * 0.7);
-            String maxSpeed = format2(maxSpeedValue);
-            String minSpeed = format2(minSpeedValue);
-
-            int estimatedStepByDistance = (int) Math.round((odometer * 1000.0) / 0.64);
-            int estimatedStepByCadence = summary.cadenceEstimatedStep;
-            int stepCount;
-            if (summary.totalStep > 0) {
-                stepCount = summary.totalStep;
-            } else if (estimatedStepByCadence > 0) {
-                stepCount = (int) Math.round(estimatedStepByCadence * 0.6 + estimatedStepByDistance * 0.25 + randomStepCount * 0.15);
-            } else {
-                stepCount = (int) Math.round(estimatedStepByDistance * 0.75 + randomStepCount * 0.25);
+                com.wzjer.fuckcg.cg.CminuteSpeedstr cminuteSpeedstr = new com.wzjer.fuckcg.cg.CminuteSpeedstr();
+                cminuteSpeedstr.min = String.valueOf(i + 1);
+                cminuteSpeedstr.v = format2(v);
+                sportBean.addCminuteSpeedstr(cminuteSpeedstr);
             }
+            String maxSpeed = format2(maxSpeedVal);
+            String minSpeed = format2(minSpeedVal);
 
-            stepCount = Math.max(1, stepCount);
-            double stepMinute = stepCount / minutes;
-
-            double minutesPerKM = minutes / odometer;
-            String lastOdometerTime = "00:" + padZero(minutesPerKM + Math.random() * 1.5) + ":" + padZero(Math.random() * 60);
-            String avgPace = padZero(minutesPerKM) + "'" + padZero(Math.random() * 60) + "''";
-
-            int paceKmCount = Math.max(1, (int) Math.ceil(Math.max(TARGET_KM, odometer)));
             for (int i = 1; i <= paceKmCount; i++) {
                 com.wzjer.fuckcg.cg.Cpacestr cpacestr = new com.wzjer.fuckcg.cg.Cpacestr();
                 cpacestr.km = String.valueOf(i);
-                cpacestr.t = padZero(Math.max(0.1, minutesPerKM - Math.random() * 1.5)) + "'" + padZero(Math.random() * 60) + "''";
+                double kmSpeed = speed * (0.97 + Math.random() * 0.06);
+                cpacestr.t = formatPaceFromSpeed(kmSpeed);
                 sportBean.addPaceStr(cpacestr);
-            }
-
-            int minuteCount = Math.max(1, (int) Math.round(minutes));
-            for (int i = 1; i <= minuteCount; i++) {
-                com.wzjer.fuckcg.cg.CminuteSpeedstr cminuteSpeedstr = new com.wzjer.fuckcg.cg.CminuteSpeedstr();
-                cminuteSpeedstr.min = String.valueOf(i);
-                cminuteSpeedstr.v = format2(avgSpeedValue + Math.random() * (i < minuteCount / 2.0 ? 1 : -1));
-                sportBean.addCminuteSpeedstr(cminuteSpeedstr);
             }
 
             for (SportLatLngBean point : routeData) {
@@ -166,18 +150,19 @@ public class fake {
             uploadJsonSports.minuteSpeed = sportBean.minuteSpeedStr;
             uploadJsonSports.modementMode = "1";
             uploadJsonSports.name = "学生真实姓名，请注意填充";
-            uploadJsonSports.needPassPointCount = "4";
+            uploadJsonSports.needPassPointCount = "5";
             uploadJsonSports.odometer = format2(odometer);
             uploadJsonSports.pace = sportBean.paceStr;
             uploadJsonSports.phoneVersion = "2210132C,34,14|2.9.5"; // 感谢 小米13Pro 在本次破解中的大力支持
             uploadJsonSports.planRouteName = "校内定向线路";
             uploadJsonSports.routeId = "81";
-            uploadJsonSports.routePolylineBh = "11527572";
+            uploadJsonSports.routePolylineBh = "14756949";
             uploadJsonSports.sportId = sportId;
             uploadJsonSports.sportImages = "";
             uploadJsonSports.stepCount = stepCount;
             uploadJsonSports.stepMinute = format2(stepMinute);
             uploadJsonSports.xh = "学生真实学号，请注意填充";
+            uploadJsonSports.randomPointStr = "[]";
         } catch (Exception e) {
             Log.e(TAG, "generateFakeSportBean failed", e);
         }
@@ -291,81 +276,139 @@ public class fake {
         return routeData;
     }
 
-    private static RouteSummary summarizeRoute(List<SportLatLngBean> routeData) {
-        RouteSummary summary = new RouteSummary();
-        if (routeData == null || routeData.isEmpty()) {
-            return summary;
-        }
-
-        double sumDistance = 0.0;
-        int maxTotalStep = 0;
-        long firstTs = 0L;
-        long lastTs = 0L;
-        SportLatLngBean prev = null;
-
-        for (SportLatLngBean point : routeData) {
-            if (point == null) {
-                continue;
-            }
-
-            if (firstTs == 0L && point.t > 0) {
-                firstTs = point.t;
-            }
-            if (point.t > 0) {
-                lastTs = point.t;
-            }
-
-            if (point.d > 0) {
-                sumDistance += point.d;
-            }
-            if (point.sta > maxTotalStep) {
-                maxTotalStep = point.sta;
-            }
-            if (point.da > summary.distanceMeters) {
-                summary.distanceMeters = point.da;
-            }
-
-            if (point.s > 0.05) {
-                summary.movingSpeedCount++;
-                summary.speedSum += point.s;
-                if (summary.minSpeed <= 0 || point.s < summary.minSpeed) {
-                    summary.minSpeed = point.s;
-                }
-                if (point.s > summary.maxSpeed) {
-                    summary.maxSpeed = point.s;
-                }
-            }
-
-            if (prev != null && prev.t > 0 && point.t > prev.t && point.st > 0) {
-                long deltaMs = point.t - prev.t;
-                summary.cadenceEstimatedStep += (int) Math.round(point.st * (deltaMs / 60000.0));
-            }
-            prev = point;
-        }
-
-        if (summary.distanceMeters <= 0) {
-            summary.distanceMeters = sumDistance;
-        }
-        if (firstTs > 0 && lastTs >= firstTs) {
-            summary.durationMillis = lastTs - firstTs;
-        }
-
-        summary.totalStep = maxTotalStep;
-        return summary;
-    }
-
     private static String format2(double value) {
         return String.valueOf(Math.round(value * 100.0) / 100.0);
     }
 
-    private static class RouteSummary {
-        double distanceMeters;
-        int totalStep;
-        long durationMillis;
-        double speedSum;
-        int movingSpeedCount;
-        double minSpeed;
-        double maxSpeed;
-        int cadenceEstimatedStep;
+    private static int estimateStepCount(double targetMeters) {
+        double strideMeters = 0.62 + Math.random() * 0.10;
+        return Math.max(1000, (int) Math.round(targetMeters / strideMeters));
+    }
+
+    private static String formatDurationHms(long durationMillis) {
+        long totalSeconds = Math.max(0L, durationMillis / 1000L);
+        long h = totalSeconds / 3600L;
+        long m = (totalSeconds % 3600L) / 60L;
+        long s = totalSeconds % 60L;
+        return padZero(h) + ":" + padZero(m) + ":" + padZero(s);
+    }
+
+    private static List<Double> buildMinuteSpeedSeries(double avgSpeed, int minuteCount) {
+        List<Double> values = new ArrayList<>();
+        if (minuteCount <= 0) {
+            values.add(Math.max(0.1, avgSpeed));
+            return values;
+        }
+
+        double rawSum = 0.0;
+        for (int i = 0; i < minuteCount; i++) {
+            double factor = 0.92 + Math.random() * 0.16;
+            double v = Math.max(0.1, avgSpeed * factor);
+            values.add(v);
+            rawSum += v;
+        }
+
+        double mean = rawSum / minuteCount;
+        double scale = mean > 0 ? avgSpeed / mean : 1.0;
+        for (int i = 0; i < values.size(); i++) {
+            values.set(i, Math.max(0.1, values.get(i) * scale));
+        }
+        return values;
+    }
+
+    private static List<SportLatLngBean> normalizeRouteData(List<SportLatLngBean> routeData,
+                                                             long beginTimestamp,
+                                                             long durationMillis,
+                                                             double targetMeters,
+                                                             int totalStep) {
+        if (routeData == null || routeData.isEmpty()) {
+            return routeData;
+        }
+
+        if (routeData.size() == 1) {
+            SportLatLngBean clone = new SportLatLngBean();
+            clone.a = routeData.get(0).a;
+            clone.o = routeData.get(0).o;
+            clone.v = 1;
+            clone.t = beginTimestamp + durationMillis;
+            clone.d = targetMeters;
+            clone.da = targetMeters;
+            clone.sta = totalStep;
+            routeData.add(clone);
+        }
+
+        long prevTs = beginTimestamp;
+        double prevDa = 0.0;
+        int prevSta = 0;
+        int count = routeData.size();
+
+        for (int i = 0; i < count; i++) {
+            SportLatLngBean point = routeData.get(i);
+            if (point == null) {
+                continue;
+            }
+
+            double progress = (double) i / (double) (count - 1);
+            long currentTs = beginTimestamp + Math.round(durationMillis * progress);
+            point.t = currentTs;
+            point.ac = 0.0;
+            point.v = point.v <= 0 ? 1 : point.v;
+
+            if (i == 0) {
+                point.d = 0.0;
+                point.da = 0.0;
+                point.s = 0.0;
+                point.st = 0;
+                point.sta = 0;
+                prevTs = currentTs;
+                continue;
+            }
+
+            double da = targetMeters * progress;
+            double d = Math.max(0.0, da - prevDa);
+            long dtMs = Math.max(1L, currentTs - prevTs);
+            double dtSec = dtMs / 1000.0;
+            int sta = (int) Math.round(totalStep * progress);
+            int stepDelta = Math.max(0, sta - prevSta);
+            int cadence = (int) Math.round(stepDelta * 60.0 / dtSec);
+
+            point.da = da;
+            point.d = d;
+            point.s = d / dtSec;
+            point.st = Math.max(0, cadence);
+            point.sta = Math.min(totalStep, Math.max(prevSta, sta));
+
+            prevDa = da;
+            prevTs = currentTs;
+            prevSta = point.sta;
+        }
+
+        SportLatLngBean last = routeData.get(routeData.size() - 1);
+        last.t = beginTimestamp + durationMillis;
+        last.da = targetMeters;
+        last.sta = totalStep;
+        return routeData;
+    }
+
+    private static String formatPaceFromSpeed(double speedKmPerHour) {
+        if (Double.isNaN(speedKmPerHour) || Double.isInfinite(speedKmPerHour) || speedKmPerHour <= 0) {
+            return "99'59''";
+        }
+
+        double paceMinutes = 60.0 / speedKmPerHour;
+        int min = (int) paceMinutes;
+        int sec = (int) Math.round((paceMinutes - min) * 60.0);
+
+        if (sec >= 60) {
+            min += 1;
+            sec = 0;
+        }
+
+        if (min > 99) {
+            min = 99;
+            sec = 59;
+        }
+
+        return padZero(min) + "'" + padZero(sec) + "''";
     }
 }

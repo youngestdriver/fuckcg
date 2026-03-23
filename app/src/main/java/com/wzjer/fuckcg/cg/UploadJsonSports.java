@@ -28,7 +28,7 @@ public class UploadJsonSports {
     public List<Cpacestr> pace;
     public String phoneVersion;
     public String planRouteName;
-    //public List<RandomPointStr> randomPointStr;
+    public String randomPointStr;
     public String routeId;
     public String routePolylineBh;
     public String sportId;

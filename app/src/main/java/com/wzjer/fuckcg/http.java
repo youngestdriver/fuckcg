@@ -164,7 +164,7 @@ public class http {
             return "{\"error\":\"encrypt failed, abort post\"}";
         }
 
-        String imei = "ffffffff-f156-e175-f156-e17500000000";
+        String imei = "ffffffff-cce7-2bea-cce7-2bea00000000";
         String v1 = md5(String.valueOf(System.currentTimeMillis()));
         String ua = "cgapp/2.9.6 (Linux; Android 16; Xiaomi/BP2A.250605.031.A3)";
         String client_json = "{\"root\":0,\"heap\":1,\"t\":" + System.currentTimeMillis() + "}";
