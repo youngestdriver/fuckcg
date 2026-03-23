@@ -33,6 +33,7 @@ public class WebAppInterface {
             startOAuthPage();
             logout();
             buildUploadJsonSports("", "");
+            requestSportId("", "");
             submitSportsData("{}");
             applyCredentials("{}");
         }
@@ -159,6 +160,13 @@ public class WebAppInterface {
     @JavascriptInterface
     public String buildUploadJsonSports(String studentId, String studentName) {
         return work.buildUploadJsonSportsJson(mContext, studentId, studentName);
+    }
+
+    //noinspection unused
+    @SuppressWarnings("unused")
+    @JavascriptInterface
+    public String requestSportId(String studentId, String studentName) {
+        return work.requestSportIdJson(mContext, studentId, studentName);
     }
 
     //noinspection unused

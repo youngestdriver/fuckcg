@@ -27,31 +27,71 @@ import okhttp3.RequestBody;
 import okhttp3.Response;
 
 public class http {
-    static String executeSignedRequest(String url, String sign, String timestamp, String v1, String imei, String ua, String cli, String cgAuthorization, RequestBody body) {
+    private static final String BASE_URL = "https://ggtypt.njtech.edu.cn/cgapp-server";
+
+    static String executeSignedRequest(String url, String sign, String timestamp, String v1, String imei, String ua, String cli, String cgAuthorization, RequestBody body, String signSource) {
         OkHttpClient client = new OkHttpClient();
 
         Request.Builder requestBuilder = new Request.Builder()
                 .url(url)
-                .addHeader("cgAuthorization", cgAuthorization)
-                .addHeader("client", cli)
-                .addHeader("sign", sign)
-                .addHeader("timestamp", timestamp)
-                .addHeader("v1", v1)
-                .addHeader("imei", imei)
-                .addHeader("User-Agent", ua);
+                .addHeader("Content-Type", "application/json;charset=UTF-8")
+                .addHeader("cgAuthorization", safeHeaderValue(cgAuthorization))
+                .addHeader("client", safeHeaderValue(cli))
+                .addHeader("sign", safeHeaderValue(sign))
+                .addHeader("timestamp", safeHeaderValue(timestamp))
+                .addHeader("v1", safeHeaderValue(v1))
+                .addHeader("imei", safeHeaderValue(imei))
+                .addHeader("User-Agent", safeHeaderValue(ua));
 
         if (body != null) {
             requestBuilder.post(body);
         }
 
         Request request = requestBuilder.build();
-        Log.d("DEBUG", "加密完成，准备请求: " + request);
+
+        StringBuilder reqLog = new StringBuilder();
+        reqLog.append("\n========== HTTP REQUEST ==========\n");
+        reqLog.append("signSource: ").append(signSource == null ? "" : signSource).append("\n");
+        reqLog.append("sign: ").append(sign == null ? "" : sign).append("\n");
+        reqLog.append("timestamp: ").append(timestamp == null ? "" : timestamp).append("\n");
+        reqLog.append(request.method()).append(" ").append(request.url()).append("\n");
+        okhttp3.Headers reqHeaders = request.headers();
+        for (int i = 0; i < reqHeaders.size(); i++) {
+            reqLog.append(reqHeaders.name(i)).append(": ").append(reqHeaders.value(i)).append("\n");
+        }
+        if (request.body() != null) {
+            try {
+                okio.Buffer buffer = new okio.Buffer();
+                request.body().writeTo(buffer);
+                reqLog.append("\n").append(buffer.readUtf8()).append("\n");
+            } catch (Exception ignored) {
+            }
+        }
+        reqLog.append("==================================");
+        Log.d("HTTP_RAW", reqLog.toString());
+
         try (Response response = client.newCall(request).execute()) {
+            String bodyStr = response.body() == null ? "" : response.body().string();
+
+            StringBuilder respLog = new StringBuilder();
+            respLog.append("\n========== HTTP RESPONSE ==========\n");
+            respLog.append("signSource: ").append(signSource == null ? "" : signSource).append("\n");
+            respLog.append("sign: ").append(sign == null ? "" : sign).append("\n");
+            respLog.append("timestamp: ").append(timestamp == null ? "" : timestamp).append("\n");
+            respLog.append(response.code()).append(" ").append(response.message()).append("\n");
+            okhttp3.Headers respHeaders = response.headers();
+            for (int i = 0; i < respHeaders.size(); i++) {
+                respLog.append(respHeaders.name(i)).append(": ").append(respHeaders.value(i)).append("\n");
+            }
+            respLog.append("\n").append(bodyStr).append("\n");
+            respLog.append("===================================");
+            Log.d("HTTP_RAW", respLog.toString());
+
             if (response.isSuccessful()) {
-                if (response.body() == null) {
+                if (bodyStr.isEmpty()) {
                     return "{\"error\":\"empty response body\"}";
                 }
-                return response.body().string();
+                return bodyStr;
             }
             return "{\"error\":\"http code: " + response.code() + "\"}";
         } catch (IOException e) {
@@ -60,12 +100,18 @@ public class http {
         }
     }
 
-    private static final String BASE_URL = "https://ggtypt.njtech.edu.cn/cgapp-server";
+    public static String get(String url, JSONObject data, String jwt, String secret) {
+        if (url == null || url.trim().isEmpty()) {
+            return "{\"error\":\"empty url\"}";
+        }
+        if (jwt == null || jwt.trim().isEmpty()) {
+            return "{\"error\":\"empty jwt\"}";
+        }
+        if (secret == null || secret.trim().isEmpty()) {
+            return "{\"error\":\"empty secret\"}";
+        }
 
-    @SuppressWarnings("unused")
-    public static void get(String url, JSONObject data, String jwt, String secret) {
         Uri.Builder builder = Uri.parse(url).buildUpon();
-
         if (data != null) {
             Iterator<String> keys = data.keys();
             while (keys.hasNext()) {
@@ -76,23 +122,29 @@ public class http {
         }
 
         String paramUrl = builder.build().toString();
-        Log.d("http", "fullUrl: " + paramUrl);
+        String signSourceUrl = extractSignPath(paramUrl);
+        Log.d("http", "get signSourceUrl: " + signSourceUrl);
 
-        encryptResult r = encrypt(paramUrl, secret);
+        encryptResult r = encrypt(signSourceUrl, secret);
         if (r == null) {
             Log.e("http", "encrypt failed, abort get");
-            return;
+            return "{\"error\":\"encrypt failed, abort get\"}";
         }
 
-        String imei = "ffffffff-f156-e175-f156-e17500000000";
+        String imei = "ffffffff-cce7-2bea-cce7-2bea00000000";
         String v1 = md5(String.valueOf(System.currentTimeMillis()));
         String ua = "cgapp/2.9.6 (Linux; Android 16; Xiaomi/BP2A.250605.031.A3)";
-        String client_json = "{\"root\":0,\"heap\":1,\"t\":"+System.currentTimeMillis()+"}";
-        String client = aes(client_json, secret.substring(0,16));
-        String fullUrl = BASE_URL + paramUrl;
+        String clientJson = "{\"root\":0,\"heap\":1,\"t\":" + System.currentTimeMillis() + "}";
+        String aesKey = fixedAesKey(secret);
+        if (aesKey == null) {
+            return "{\"error\":\"invalid secret\"}";
+        }
+        String client = aes(clientJson, aesKey);
+        String fullUrl = BASE_URL + signSourceUrl;
 
-        String rs = executeSignedRequest(fullUrl, r.sign, r.timestamp, v1, imei, ua, client, jwt, null);
+        String rs = executeSignedRequest(fullUrl, r.sign, r.timestamp, v1, imei, ua, client, jwt, null, signSourceUrl);
         Log.d("DEBUG", "Response: " + rs);
+        return rs;
     }
 
     private static String extractSignPath(String url) {
@@ -140,6 +192,16 @@ public class http {
     }
 
     public static String post(String url, JSONObject data, String jwt, String secret) {
+        if (url == null || url.trim().isEmpty()) {
+            return "{\"error\":\"empty url\"}";
+        }
+        if (jwt == null || jwt.trim().isEmpty()) {
+            return "{\"error\":\"empty jwt\"}";
+        }
+        if (secret == null || secret.trim().isEmpty()) {
+            return "{\"error\":\"empty secret\"}";
+        }
+
         FormBody.Builder bodyBuilder = new FormBody.Builder(StandardCharsets.UTF_8);
         TreeMap<String, String> sortedSignParams = new TreeMap<>();
 
@@ -156,7 +218,7 @@ public class http {
 
         String signPath = extractSignPath(url);
         String signSourceUrl = buildPostSignSource(signPath, sortedSignParams);
-        Log.d("http", "signSourceUrl: " + signSourceUrl);
+        Log.d("http", "post signSourceUrl: " + signSourceUrl);
 
         encryptResult r = encrypt(signSourceUrl, secret);
         if (r == null) {
@@ -167,12 +229,16 @@ public class http {
         String imei = "ffffffff-cce7-2bea-cce7-2bea00000000";
         String v1 = md5(String.valueOf(System.currentTimeMillis()));
         String ua = "cgapp/2.9.6 (Linux; Android 16; Xiaomi/BP2A.250605.031.A3)";
-        String client_json = "{\"root\":0,\"heap\":1,\"t\":" + System.currentTimeMillis() + "}";
-        String client = aes(client_json, secret.substring(0, 16));
+        String clientJson = "{\"root\":0,\"heap\":1,\"t\":" + System.currentTimeMillis() + "}";
+        String aesKey = fixedAesKey(secret);
+        if (aesKey == null) {
+            return "{\"error\":\"invalid secret\"}";
+        }
+        String client = aes(clientJson, aesKey);
 
         String fullUrl = BASE_URL + signPath;
         RequestBody body = bodyBuilder.build();
-        String rs = executeSignedRequest(fullUrl, r.sign, r.timestamp, v1, imei, ua, client, jwt, body);
+        String rs = executeSignedRequest(fullUrl, r.sign, r.timestamp, v1, imei, ua, client, jwt, body, signSourceUrl);
         Log.d("DEBUG", "Response: " + rs);
         return rs;
     }
@@ -181,7 +247,12 @@ public class http {
         public String sign;
         public String timestamp;
     }
+
     private static encryptResult encrypt(String url, String secret) {
+        if (url == null || url.trim().isEmpty() || secret == null || secret.trim().isEmpty()) {
+            Log.e("http", "encrypt input invalid, url or secret is empty");
+            return null;
+        }
         if (!ChingoEncrypt.isLibraryLoaded()) {
             Log.e("http", "Native library not loaded, cannot compute signature");
             return null;
@@ -190,18 +261,40 @@ public class http {
         try {
             String r = ChingoEncrypt.cgapiEnrypt(secret, url);
             String[] split = r.split("\\|");
+            if (split.length <= 3) {
+                Log.e("http", "encrypt result invalid: " + r);
+                return null;
+            }
             String sign1 = split[3];
             String time = split[1];
 
-            return new encryptResult() {{
-                this.sign = sign1;
-                this.timestamp = time;
-            }};
+            Log.d("HTTP_SIGN", "source=" + url + ", sign=" + sign1 + ", timestamp=" + time);
+
+            encryptResult result = new encryptResult();
+            result.sign = sign1;
+            result.timestamp = time;
+            return result;
         } catch (Exception e) {
             Log.e("http", "Error computing signature: " + e.getMessage(), e);
             return null;
         }
     }
+
+    private static String fixedAesKey(String key) {
+        if (key == null || key.trim().isEmpty()) {
+            return null;
+        }
+        StringBuilder sb = new StringBuilder(key);
+        while (sb.length() < 16) {
+            sb.append('0');
+        }
+        return sb.substring(0, 16);
+    }
+
+    private static String safeHeaderValue(String value) {
+        return value == null ? "" : value;
+    }
+
     private static String md5(String input) {
         try {
             java.security.MessageDigest md = java.security.MessageDigest.getInstance("MD5");
@@ -217,51 +310,43 @@ public class http {
         }
     }
 
-    private static String aes(String data, String key){
+    private static String aes(String data, String key) {
         try {
-            // 1. 对应 m22116 的逻辑：密钥不足16位则用 '0' 补齐
             StringBuilder sb = new StringBuilder(key);
             while (sb.length() < 16) {
-                sb.append("0");
+                sb.append('0');
             }
             byte[] keyBytes = sb.toString().substring(0, 16).getBytes(StandardCharsets.UTF_8);
 
-            //noinspection GetInstance
             Cipher cipher = Cipher.getInstance("AES/ECB/PKCS5Padding");
-
-            // 3. 初始化加密模式（不使用 IV）
             cipher.init(Cipher.ENCRYPT_MODE, new SecretKeySpec(keyBytes, "AES"));
-
-            // 4. 执行加密
             byte[] encrypted = cipher.doFinal(data.getBytes(StandardCharsets.UTF_8));
-
-            // 5. 对应 C3682.m22106 的逻辑：通常为 Base64 编码
             return Base64.encodeToString(encrypted, Base64.NO_WRAP);
         } catch (Exception e) {
             Log.e("http", "aes encrypt failed", e);
             return null;
         }
-
     }
 
     public static String postSportsData(String url, String jsonData, android.content.Context context) {
         try {
-            // 从本地持久化读取 jwt 和 secret
             login.UserBody userBody = login.loadUserBody(context);
             if (userBody == null || userBody.jwt == null || userBody.secret == null) {
                 return "{\"error\":\"Authentication not available, please login first\"}";
             }
 
-            // 运动请求体构造
             JSONObject dataObj = new JSONObject();
             try {
-                dataObj.put("jsonsports", http.aes(jsonData, userBody.secret.substring(0, 16)));
+                String aesKey = fixedAesKey(userBody.secret);
+                if (aesKey == null) {
+                    return "{\"error\":\"invalid secret\"}";
+                }
+                dataObj.put("jsonsports", aes(jsonData, aesKey));
             } catch (JSONException e) {
                 Log.e("http", "Failed to construct data object: " + e.getMessage(), e);
                 return "{\"error\":\"Failed to construct data object: " + e.getMessage() + "\"}";
             }
 
-            // 发起 POST 请求并把服务端真实响应返回给前端
             String responseText = post(url, dataObj, userBody.jwt, userBody.secret);
             if (responseText.trim().isEmpty()) {
                 return "{\"error\":\"empty response\"}";
@@ -286,4 +371,3 @@ public class http {
         }
     }
 }
-

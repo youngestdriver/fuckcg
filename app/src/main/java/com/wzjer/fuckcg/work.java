@@ -10,6 +10,7 @@ import org.json.JSONObject;
 import java.lang.reflect.Array;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
+import java.sql.Time;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.IdentityHashMap;
@@ -27,15 +28,15 @@ public class work {
         String safeStudentId = studentId == null ? "" : studentId.trim();
         String safeStudentName = studentName == null ? "" : studentName.trim();
         if (safeStudentId.isEmpty()) {
-            return buildErrorJson("学号不能为空");
+            return buildErrorJson("studentId is required");
         }
         if (safeStudentName.isEmpty()) {
-            return buildErrorJson("姓名不能为空");
+            return buildErrorJson("studentName is required");
         }
 
         Context safeContext = context != null ? context : appContext;
         if (safeContext == null) {
-            return buildErrorJson("上下文未初始化，无法生成数据");
+            return buildErrorJson("context is not initialized");
         }
 
         try {
@@ -45,8 +46,122 @@ public class work {
             return json.toString();
         } catch (Exception e) {
             Log.e(TAG, "Failed to build UploadJsonSports json", e);
-            return buildErrorJson("生成 UploadJsonSports 失败: " + e.getMessage());
+            return buildErrorJson("build UploadJsonSports failed: " + e.getMessage());
         }
+    }
+
+    public static String requestSportIdJson(Context context, String studentId, String studentName) {
+        String safeStudentId = studentId == null ? "" : studentId.trim();
+        String safeStudentName = studentName == null ? "" : studentName.trim();
+        if (safeStudentId.isEmpty()) {
+            return buildErrorJson("studentId is required");
+        }
+        if (safeStudentName.isEmpty()) {
+            return buildErrorJson("studentName is required");
+        }
+
+        Context safeContext = context != null ? context : appContext;
+        if (safeContext == null) {
+            return buildErrorJson("context is not initialized");
+        }
+
+        try {
+            login.UserBody userBody = login.loadUserBody(safeContext);
+            if (userBody == null || userBody.jwt == null || userBody.secret == null) {
+                return buildErrorJson("auth credentials are unavailable, please login again");
+            }
+
+            String responseText = http.get("/api/l/v7/sportsId", null, userBody.jwt, userBody.secret);
+            if (responseText.trim().isEmpty()) {
+                return buildErrorJson("request sportId failed: empty response");
+            }
+
+            JSONObject serverJson;
+            try {
+                serverJson = new JSONObject(responseText);
+            } catch (Exception parseError) {
+                Log.w(TAG, "sportId response is not JSON: " + responseText);
+                return buildErrorJson("request sportId failed: response is not JSON");
+            }
+
+            String sportsId = serverJson.getString("data");
+
+            if (sportsId.isEmpty()) {
+                return buildErrorJson("request succeeded but sportId is missing");
+            }
+
+            JSONObject result = new JSONObject();
+            result.put("sportId", sportsId);
+            result.put("timestamp", System.currentTimeMillis());
+            return result.toString();
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to request SportId", e);
+            return buildErrorJson("request sportId failed: " + e.getMessage());
+        }
+    }
+
+    private static String extractSportId(JSONObject json) {
+        if (json == null) {
+            return "";
+        }
+
+        String direct = firstNonBlank(
+                json.optString("sportId", ""),
+                json.optString("sportid", ""),
+                json.optString("id", "")
+        );
+        if (!direct.isEmpty()) {
+            return direct;
+        }
+
+        JSONObject nested = firstNonNullObject(
+                json.optJSONObject("data"),
+                json.optJSONObject("result"),
+                json.optJSONObject("response")
+        );
+        if (nested != null) {
+            return extractSportId(nested);
+        }
+
+        JSONArray dataArray = json.optJSONArray("data");
+        if (dataArray != null && dataArray.length() > 0) {
+            Object first = dataArray.opt(0);
+            if (first instanceof JSONObject) {
+                return extractSportId((JSONObject) first);
+            }
+            if (first != null) {
+                return String.valueOf(first).trim();
+            }
+        }
+
+        return "";
+    }
+
+    private static JSONObject firstNonNullObject(JSONObject... items) {
+        if (items == null) {
+            return null;
+        }
+        for (JSONObject item : items) {
+            if (item != null) {
+                return item;
+            }
+        }
+        return null;
+    }
+
+    private static String firstNonBlank(String... values) {
+        if (values == null) {
+            return "";
+        }
+        for (String value : values) {
+            if (value != null) {
+                String trimmed = value.trim();
+                if (!trimmed.isEmpty()) {
+                    return trimmed;
+                }
+            }
+        }
+        return "";
     }
 
     private static String buildErrorJson(String message) {

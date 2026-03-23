@@ -52,6 +52,27 @@
         localStorage.setItem('cg.studentName', studentName || '');
     }
 
+    function readSportIdDraft() {
+        const fetchedAtMs = Number(localStorage.getItem('cg.sportIdFetchedAtMs') || '0');
+        return {
+            sportId: (localStorage.getItem('cg.sportId') || '').trim(),
+            identityKey: localStorage.getItem('cg.sportIdIdentityKey') || '',
+            fetchedAtMs: isFinite(fetchedAtMs) && fetchedAtMs > 0 ? fetchedAtMs : 0
+        };
+    }
+
+    function saveSportIdDraft(sportId, identityKey, fetchedAtMs) {
+        localStorage.setItem('cg.sportId', (sportId || '').trim());
+        localStorage.setItem('cg.sportIdIdentityKey', identityKey || '');
+        localStorage.setItem('cg.sportIdFetchedAtMs', fetchedAtMs ? String(fetchedAtMs) : '0');
+    }
+
+    function clearSportIdDraft() {
+        localStorage.removeItem('cg.sportId');
+        localStorage.removeItem('cg.sportIdIdentityKey');
+        localStorage.removeItem('cg.sportIdFetchedAtMs');
+    }
+
     function initIndexPage() {
         const status = document.getElementById('indexStatus');
         const auth = getAuthState();
@@ -143,6 +164,9 @@
         const status = document.getElementById('workStatus');
         const studentIdInput = document.getElementById('studentId');
         const studentNameInput = document.getElementById('studentName');
+        const sportIdInput = document.getElementById('sportId');
+        const sportIdWaitHint = document.getElementById('sportIdWaitHint');
+        const sportIdButton = document.getElementById('sportIdButton');
         const generateButton = document.getElementById('generateButton');
         const clearOutputButton = document.getElementById('clearOutputButton');
         const logoutButton = document.getElementById('logoutButton');
@@ -164,29 +188,279 @@
             studentNameInput.value = draft.studentName;
         }
 
+        let currentSportId = '';
+        let sportIdForIdentity = '';
+        let sportIdFetchedAtMs = 0;
+        let sportIdWaitTimer = 0;
+
+        const savedSportDraft = readSportIdDraft();
+        currentSportId = savedSportDraft.sportId;
+        sportIdForIdentity = savedSportDraft.identityKey;
+        sportIdFetchedAtMs = savedSportDraft.fetchedAtMs;
+        if (sportIdInput) {
+            sportIdInput.value = currentSportId;
+        }
+
+        function getCurrentIdentityKey() {
+            const studentId = (studentIdInput && studentIdInput.value || '').trim();
+            const studentName = (studentNameInput && studentNameInput.value || '').trim();
+            if (!studentId && !studentName) {
+                return '';
+            }
+            return studentId + '|' + studentName;
+        }
+
+        function formatSportIdTime(timestampMs) {
+            if (!timestampMs) {
+                return '未知';
+            }
+            const date = new Date(timestampMs);
+            if (isNaN(date.getTime())) {
+                return '未知';
+            }
+            return date.toLocaleString('zh-CN', { hour12: false });
+        }
+
+        function formatWaitDuration(timestampMs) {
+            if (!timestampMs) {
+                return '0分0秒';
+            }
+            const diffMs = Math.max(0, Date.now() - timestampMs);
+            const minutes = Math.floor(diffMs / 60000);
+            const seconds = Math.floor((diffMs % 60000) / 1000);
+            return minutes + '分' + seconds + '秒';
+        }
+
+        function parseTimestampMs(rawTimestamp) {
+            if (rawTimestamp == null || rawTimestamp === '') {
+                return 0;
+            }
+            const numeric = Number(rawTimestamp);
+            if (!isFinite(numeric) || numeric <= 0) {
+                return 0;
+            }
+            // 兼容秒级时间戳
+            return numeric < 1000000000000 ? numeric * 1000 : numeric;
+        }
+
+        function stopSportIdWaitTimer() {
+            if (sportIdWaitTimer) {
+                clearInterval(sportIdWaitTimer);
+                sportIdWaitTimer = 0;
+            }
+        }
+
+        function renderSportIdWaitHint() {
+            if (!sportIdWaitHint) {
+                return;
+            }
+            if (!currentSportId || !sportIdFetchedAtMs) {
+                sportIdWaitHint.textContent = '尚未记录 SportId 时间。';
+                sportIdWaitHint.className = 'status info';
+                return;
+            }
+
+            const elapsedMs = Math.max(0, Date.now() - sportIdFetchedAtMs);
+            const passedMinutes = Math.floor(elapsedMs / 60000);
+            sportIdWaitHint.textContent = 'SportId：' + currentSportId + '；记录时间：' + formatSportIdTime(sportIdFetchedAtMs) + '；已等待 ' + formatWaitDuration(sportIdFetchedAtMs) + '（前端每秒自动刷新，仅供参考）';
+            sportIdWaitHint.className = 'status ' + (passedMinutes >= 15 ? 'success' : 'info');
+        }
+
+        function startSportIdWaitTimer() {
+            stopSportIdWaitTimer();
+            renderSportIdWaitHint();
+            if (!currentSportId || !sportIdFetchedAtMs) {
+                return;
+            }
+            sportIdWaitTimer = window.setInterval(renderSportIdWaitHint, 1000);
+        }
+
+        function syncSportIdDraftFromInput(options) {
+            const trimmedSportId = (sportIdInput && sportIdInput.value || '').trim();
+            const nextFetchedAtMs = options && options.keepTimestamp ? (sportIdFetchedAtMs || Date.now()) : Date.now();
+            const nextIdentityKey = getCurrentIdentityKey();
+
+            currentSportId = trimmedSportId;
+            sportIdForIdentity = trimmedSportId ? nextIdentityKey : '';
+            sportIdFetchedAtMs = trimmedSportId ? nextFetchedAtMs : 0;
+
+            if (trimmedSportId) {
+                saveSportIdDraft(trimmedSportId, sportIdForIdentity, sportIdFetchedAtMs);
+            } else {
+                clearSportIdDraft();
+            }
+            startSportIdWaitTimer();
+        }
+
+        function showSportIdSavedStatus(prefix) {
+            if (!currentSportId) {
+                return;
+            }
+            setStatus(
+                status,
+                (prefix || 'SportId 已保存') + '：' + currentSportId + '；记录时间：' + formatSportIdTime(sportIdFetchedAtMs) + '（已等待 ' + formatWaitDuration(sportIdFetchedAtMs) + '）',
+                'success'
+            );
+            renderSportIdWaitHint();
+        }
+
+        function getIdentityInput() {
+            const studentId = (studentIdInput && studentIdInput.value || '').trim();
+            const studentName = (studentNameInput && studentNameInput.value || '').trim();
+
+            if (!studentId) {
+                setStatus(status, '请输入学号。', 'error');
+                studentIdInput && studentIdInput.focus();
+                return null;
+            }
+            if (!studentName) {
+                setStatus(status, '请输入姓名。', 'error');
+                studentNameInput && studentNameInput.focus();
+                return null;
+            }
+
+            return {
+                studentId: studentId,
+                studentName: studentName,
+                identityKey: studentId + '|' + studentName
+            };
+        }
+
+        function parseSportIdResponse(rawResponse) {
+            if (rawResponse && typeof rawResponse === 'object') {
+                return {
+                    sportId: (rawResponse.sportId || '').toString().trim(),
+                    error: rawResponse.error || '',
+                    timestampMs: parseTimestampMs(rawResponse.timestamp || rawResponse.time || rawResponse.fetchedAt)
+                };
+            }
+
+            const text = (rawResponse == null ? '' : String(rawResponse)).trim();
+            if (!text) {
+                return { sportId: '', error: '未返回 SportId。', timestampMs: 0 };
+            }
+
+            const json = safeParseJson(text, null);
+            if (json) {
+                return {
+                    sportId: (json.sportId || '').toString().trim(),
+                    error: json.error || '',
+                    timestampMs: parseTimestampMs(json.timestamp || json.time || json.fetchedAt)
+                };
+            }
+
+            // 兼容直接返回纯文本 sportId 的场景
+            return { sportId: text, error: '', timestampMs: 0 };
+        }
+
+        function requestSportId(studentId, studentName) {
+            // TODO: 在这里补充你自己的请求逻辑（fetch / Bridge / 其他方式均可）。
+            // 约定返回值：
+            // 1) 字符串 sportId，例如 "123456"
+            // 2) JSON 字符串或对象，例如 {"sportId":"123456"} 或 {"error":"错误信息"}
+            if (hasBridgeMethod('requestSportId')) {
+                return Promise.resolve(window.Bridge.requestSportId(studentId, studentName));
+            }
+            return Promise.reject(new Error('请先在 app.js 的 requestSportId() 中实现 SportId 请求逻辑。'));
+        }
+
+        if (studentIdInput) {
+            studentIdInput.addEventListener('input', function () {
+                saveFormDraft(studentIdInput.value, studentNameInput && studentNameInput.value);
+            });
+        }
+
+        if (studentNameInput) {
+            studentNameInput.addEventListener('input', function () {
+                saveFormDraft(studentIdInput && studentIdInput.value, studentNameInput.value);
+            });
+        }
+
+        if (sportIdInput) {
+            sportIdInput.addEventListener('input', function () {
+                syncSportIdDraftFromInput();
+            });
+
+            sportIdInput.addEventListener('change', function () {
+                syncSportIdDraftFromInput();
+                if (currentSportId) {
+                    showSportIdSavedStatus('已手动保存 SportId');
+                } else {
+                    setStatus(status, '已清空已保存的 SportId。', 'info');
+                    renderSportIdWaitHint();
+                }
+            });
+        }
+
+        if (sportIdButton) {
+            sportIdButton.addEventListener('click', function () {
+                const identity = getIdentityInput();
+                if (!identity) {
+                    return;
+                }
+
+                saveFormDraft(identity.studentId, identity.studentName);
+                setStatus(status, '正在请求 SportId...', 'info');
+                sportIdButton.disabled = true;
+
+                Promise.resolve(requestSportId(identity.studentId, identity.studentName)).then(function (rawResponse) {
+                    const parsed = parseSportIdResponse(rawResponse);
+                    if (parsed.error) {
+                        throw new Error(parsed.error);
+                    }
+                    if (!parsed.sportId) {
+                        throw new Error('请求成功但未获取到 SportId。');
+                    }
+
+                    currentSportId = parsed.sportId;
+                    sportIdForIdentity = identity.identityKey;
+                    sportIdFetchedAtMs = parsed.timestampMs || Date.now();
+                    sportIdInput && (sportIdInput.value = currentSportId);
+                    saveSportIdDraft(currentSportId, sportIdForIdentity, sportIdFetchedAtMs);
+                    startSportIdWaitTimer();
+                    setStatus(
+                        status,
+                        'SportId 获取成功：' + currentSportId + '；获取时间：' + formatSportIdTime(sportIdFetchedAtMs) + '（已等待 ' + formatWaitDuration(sportIdFetchedAtMs) + '）',
+                        'success'
+                    );
+                }).catch(function (error) {
+                    currentSportId = '';
+                    sportIdForIdentity = '';
+                    sportIdFetchedAtMs = 0;
+                    sportIdInput && (sportIdInput.value = '');
+                    clearSportIdDraft();
+                    stopSportIdWaitTimer();
+                    renderSportIdWaitHint();
+                    setStatus(status, '获取 SportId 失败：' + (error && error.message ? error.message : '未知错误'), 'error');
+                }).finally(function () {
+                    sportIdButton.disabled = false;
+                });
+            });
+        }
+
         if (generateButton) {
             generateButton.addEventListener('click', function () {
-                const studentId = (studentIdInput && studentIdInput.value || '').trim();
-                const studentName = (studentNameInput && studentNameInput.value || '').trim();
-
-                if (!studentId) {
-                    setStatus(status, '请输入学号。', 'error');
-                    studentIdInput && studentIdInput.focus();
+                const identity = getIdentityInput();
+                if (!identity) {
                     return;
                 }
-                if (!studentName) {
-                    setStatus(status, '请输入姓名。', 'error');
-                    studentNameInput && studentNameInput.focus();
-                    return;
-                }
-                if (!hasBridgeMethod('buildUploadJsonSports')) {
-                    setStatus(status, '当前环境不支持原生生成接口。', 'error');
-                    return;
+                if (!currentSportId || sportIdForIdentity !== identity.identityKey) {
+                    setStatus(status, '未匹配到当前学号/姓名对应的 SportId，第二步仍会继续执行。', 'info');
                 }
 
-                saveFormDraft(studentId, studentName);
-                setStatus(status, '正在生成 UploadJsonSports...', 'info');
-                const resultText = window.Bridge.buildUploadJsonSports(studentId, studentName);
+                if (currentSportId && sportIdFetchedAtMs) {
+                    setStatus(
+                        status,
+                        '正在生成 UploadJsonSports...（SportId 记录时间：' + formatSportIdTime(sportIdFetchedAtMs) + '，已等待 ' + formatWaitDuration(sportIdFetchedAtMs) + '）',
+                        'info'
+                    );
+                }
+
+                saveFormDraft(identity.studentId, identity.studentName);
+                if (!currentSportId || !sportIdFetchedAtMs) {
+                    setStatus(status, '正在生成 UploadJsonSports...', 'info');
+                }
+                const resultText = window.Bridge.buildUploadJsonSports(identity.studentId, identity.studentName);
                 const result = safeParseJson(resultText, null);
 
                 if (!result) {
@@ -200,6 +474,9 @@
                     return;
                 }
 
+                if (typeof result === 'object' && result !== null) {
+                    result.sportId = currentSportId;
+                }
                 setStatus(status, '生成成功，可编辑 JSON 后发送。', 'success');
                 output.value = JSON.stringify(result, null, 2);
             });
@@ -305,11 +582,13 @@
             clearOutputButton.addEventListener('click', function () {
                 output.value = '{}';
                 setStatus(status, '结果已清空。', 'info');
+                renderSportIdWaitHint();
             });
         }
 
         if (logoutButton) {
             logoutButton.addEventListener('click', function () {
+                stopSportIdWaitTimer();
                 if (hasBridgeMethod('logout')) {
                     window.Bridge.logout();
                     return;
@@ -318,7 +597,15 @@
             });
         }
 
-        setStatus(status, '已登录，可以开始生成 UploadJsonSports。', 'success');
+        window.addEventListener('beforeunload', stopSportIdWaitTimer);
+
+        if (currentSportId) {
+            startSportIdWaitTimer();
+            showSportIdSavedStatus('已恢复已保存的 SportId');
+        } else {
+            renderSportIdWaitHint();
+            setStatus(status, '已登录，可以开始生成 UploadJsonSports。', 'success');
+        }
 
         // 初始化高级设置面板
         initAdvancedPanel();

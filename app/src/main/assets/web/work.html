@@ -18,22 +18,28 @@
                     </div>
                     <button id="logoutButton" class="secondary" type="button">退出登录</button>
                 </div>
-                <p class="muted">请填写学号与姓名，系统将通过原生桥接生成标准 `UploadJsonSports` 数据，并在下方提供结构化 JSON 预览。</p>
+                <p class="muted">请填写学号与姓名；第一步获取或手动填写 SportId 后，前端会持续显示已等待时长供你参考。</p>
                 <div id="workStatus" class="status info">准备就绪，请填写信息后开始操作。</div>
             </div>
 
             <div class="card form-card">
                 <label class="field">
                     <span>学号</span>
-                    <input id="studentId" type="text" inputmode="numeric" autocomplete="off" placeholder="例如：202321054021" />
+                    <input id="studentId" type="text" inputmode="numeric" autocomplete="off" placeholder="例如：2023114514" />
                 </label>
                 <label class="field">
                     <span>姓名</span>
                     <input id="studentName" type="text" autocomplete="off" placeholder="例如：张三" />
                 </label>
+                <label class="field">
+                    <span>SportId</span>
+                    <input id="sportId" type="text" autocomplete="off" placeholder="可手动输入，获取后会自动保存" />
+                </label>
+                <div id="sportIdWaitHint" class="status info">尚未记录 SportId 时间。</div>
                 <div class="actions">
-                    <button id="generateButton" class="primary" type="button">生成 UploadJsonSports</button>
-                    <button id="submitButton" class="primary" type="button">发起 HTTP 请求</button>
+                    <button id="sportIdButton" class="primary" type="button">第一步、获取 SportId</button>
+                    <button id="generateButton" class="primary" type="button">第二步、生成 UploadJsonSports</button>
+                    <button id="submitButton" class="primary" type="button">第三步、发起 HTTP 请求</button>
                     <button id="clearOutputButton" class="secondary" type="button">清空结果</button>
                 </div>
             </div>
