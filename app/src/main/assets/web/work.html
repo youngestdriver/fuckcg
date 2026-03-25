@@ -38,7 +38,8 @@
                 </label>
                 <p id="sportIdHelp" class="muted">如果你已经有可用的 SportId，可以直接粘贴到这里；如果没有，就先点下面的第一步获取。</p>
                 <div id="sportIdWaitHint" class="status info">尚未记录 SportId 时间。</div>
-                <p class="muted">推荐操作顺序：① 获取 / 填写 SportId → ② 生成 UploadJsonSports → ③ 检查后再提交。</p>
+                <p class="muted">推荐操作顺序：① 获取 / 填写 SportId → ② 等15分钟左右生成 UploadJsonSports → ③ 检查后再提交。</p>
+                <p class="muted">你需要保证生成的 UploadJsonSports 中的 beginTime 晚于获取SportId的时间，但不能晚太多</p>
                 <div class="actions">
                     <button id="sportIdButton" class="primary" type="button">第一步：获取 SportId</button>
                     <button id="generateButton" class="primary" type="button">第二步：生成 UploadJsonSports</button>
